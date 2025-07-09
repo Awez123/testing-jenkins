@@ -39,6 +39,8 @@ spec:
         K8S_NAMESPACE = 'test' // Namespace for deployment
         // Define the path to the virtual environment for AWS CLI
         AWS_VENV_PATH = '/tmp/venv_awscli'
+        // Set KUBECONFIG globally for the pipeline to ensure consistent access
+        KUBECONFIG = '/root/.kube/config'
     }
 
     stages {
@@ -96,15 +98,13 @@ spec:
                         # Install AWS CLI into the virtual environment
                         pip install awscli
 
-                        # Export KUBECONFIG to ensure kubectl and helm use the generated config
-                        export KUBECONFIG=/root/.kube/config
-
                         # Configure AWS CLI and kubeconfig
+                        # KUBECONFIG is already set globally, so aws eks update-kubeconfig will write to it.
                         aws eks --region ${AWS_REGION} update-kubeconfig --name ${CLUSTER_NAME}
                         kubectl config current-context
                         kubectl get nodes # Test connectivity
 
-                        # Deactivate the virtual environment
+                        # Deactivate the virtual environment (optional, but good practice after setup)
                         deactivate
                     '''
                 }
@@ -119,8 +119,7 @@ spec:
                         # Activate the virtual environment for AWS CLI to ensure 'aws' is in PATH
                         . ${AWS_VENV_PATH}/bin/activate
 
-                        # Ensure KUBECONFIG is set for this shell session
-                        export KUBECONFIG=/root/.kube/config
+                        # KUBECONFIG is already set globally, no need to export again.
 
                         # Check if the chart directory exists before deploying
                         if [ -d "${NGINX_CHART_PATH}" ]; then
@@ -146,8 +145,7 @@ spec:
                         # Activate the virtual environment for AWS CLI to ensure 'aws' is in PATH
                         . ${AWS_VENV_PATH}/bin/activate
 
-                        # Ensure KUBECONFIG is set for this shell session
-                        export KUBECONFIG=/root/.kube/config
+                        # KUBECONFIG is already set globally, no need to export again.
 
                         # Check if the chart directory exists before deploying
                         if [ -d "${PROMETHEUS_CHART_PATH}" ]; then
