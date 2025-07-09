@@ -1,5 +1,21 @@
 pipeline {
-  agent any
+  agent {
+    kubernetes {
+      yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+    - name: aws-tools
+      image: lachlanevenson/k8s-helm:latest
+      command:
+        - cat
+      tty: true
+  restartPolicy: Never
+"""
+      defaultContainer 'aws-tools'
+    }
+  }
 
   environment {
     AWS_REGION = 'ap-south-1'
@@ -7,32 +23,9 @@ pipeline {
   }
 
   stages {
-    stage('Install Tools') {
+    stage('Clone Repo') {
       steps {
-        sh '''
-          # Update and install basic dependencies
-          sudo apt-get update
-          sudo apt-get install -y unzip curl sudo tar gzip
-
-          # Install AWS CLI
-          if ! command -v aws &> /dev/null; then
-            curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-            unzip awscliv2.zip
-            sudo ./aws/install
-          fi
-
-          # Install kubectl
-          curl -LO "https://dl.k8s.io/release/$(curl -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-          chmod +x kubectl && sudo mv kubectl /usr/local/bin/
-
-          # Install Helm
-          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-
-          # Confirm versions
-          aws --version
-          kubectl version --client
-          helm version
-        '''
+        git 'https://github.com/Awez123/testing-jenkins.git'
       }
     }
 
@@ -40,31 +33,26 @@ pipeline {
       steps {
         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'jenkinsuser']]) {
           sh '''
+            curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.tar.gz" -o "awscliv2.tar.gz"
+            tar -xvzf awscliv2.tar.gz
+            ./aws/install
+
+            aws --version
             aws eks --region $AWS_REGION update-kubeconfig --name $CLUSTER_NAME
           '''
         }
       }
     }
 
-    stage('Clone Repo') {
-      steps {
-        git 'https://github.com/Awez123/testing-jenkins.git'
-      }
-    }
-
     stage('Deploy NGINX') {
       steps {
-        sh '''
-          helm upgrade --install my-nginx ./nginx --namespace test --create-namespace
-        '''
+        sh 'helm upgrade --install my-nginx ./nginx --namespace test --create-namespace'
       }
     }
 
     stage('Deploy Prometheus') {
       steps {
-        sh '''
-          helm upgrade --install my-prometheus ./prometheus --namespace test --create-namespace
-        '''
+        sh 'helm upgrade --install my-prometheus ./prometheus --namespace test --create-namespace'
       }
     }
   }
