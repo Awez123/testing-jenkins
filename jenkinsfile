@@ -15,7 +15,7 @@ pipeline {
 
     stage('Configure AWS & EKS') {
       steps {
-        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'jenkinuser']]) {
+        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'jenkinsuser']]) {
             sh '''
                 which aws || echo "aws CLI not found"
                 aws --version || echo "aws CLI missing or broken"
