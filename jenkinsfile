@@ -1,10 +1,5 @@
 pipeline {
-  agent {
-    docker {
-      image 'amazon/aws-cli' // Lightweight base with AWS CLI
-      args '-u root'         // Run as root to install packages
-    }
-  }
+  agent any
 
   environment {
     AWS_REGION = 'ap-south-1'
@@ -12,16 +7,22 @@ pipeline {
   }
 
   stages {
-    stage('Install Dependencies') {
+    stage('Install Tools') {
       steps {
         sh '''
-          yum install -y curl unzip tar gzip
-          curl -LO "https://dl.k8s.io/release/$(curl -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-          chmod +x kubectl && mv kubectl /usr/local/bin/
+          # Install aws CLI if missing
+          if ! command -v aws &> /dev/null; then
+            curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+            unzip awscliv2.zip
+            sudo ./aws/install
+          fi
 
+          # Install kubectl
+          curl -LO "https://dl.k8s.io/release/$(curl -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl && sudo mv kubectl /usr/local/bin/
+
+          # Install Helm
           curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-          helm version
-          kubectl version --client
         '''
       }
     }
@@ -45,17 +46,13 @@ pipeline {
 
     stage('Deploy NGINX') {
       steps {
-        sh '''
-          helm upgrade --install my-nginx ./nginx --namespace test --create-namespace
-        '''
+        sh 'helm upgrade --install my-nginx ./nginx --namespace test --create-namespace'
       }
     }
 
     stage('Deploy Prometheus') {
       steps {
-        sh '''
-          helm upgrade --install my-prometheus ./prometheus --namespace test --create-namespace
-        '''
+        sh 'helm upgrade --install my-prometheus ./prometheus --namespace test --create-namespace'
       }
     }
   }
