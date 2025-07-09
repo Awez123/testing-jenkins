@@ -66,12 +66,12 @@ spec:
 
                         echo "🎯 Installing Helm..."
                         export VERIFY_CHECKSUM=false
-                        # Changed 'bash' to 'sh' for broader compatibility with Alpine's default shell,
-                        # but also installed bash above for robustness.
-                        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | sh
+                        # Explicitly use 'bash' to run the Helm installation script to avoid 'unknown operand' errors.
+                        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
                         echo "Verifying installations..."
-                        kubectl version --client --short
+                        # Removed --short flag as it's not supported by older kubectl versions
+                        kubectl version --client
                         helm version
                     '''
                 }
