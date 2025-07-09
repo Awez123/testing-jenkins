@@ -61,9 +61,14 @@ spec:
                         chmod +x kubectl
                         mv kubectl /usr/local/bin/
 
+                        echo "🎯 Installing bash for Helm script compatibility..."
+                        apk add --no-cache bash # Install bash explicitly
+
                         echo "🎯 Installing Helm..."
                         export VERIFY_CHECKSUM=false
-                        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+                        # Changed 'bash' to 'sh' for broader compatibility with Alpine's default shell,
+                        # but also installed bash above for robustness.
+                        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | sh
 
                         echo "Verifying installations..."
                         kubectl version --client --short
