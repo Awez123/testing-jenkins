@@ -1,19 +1,15 @@
 // Jenkinsfile for deploying Helm charts to EKS
 
-// Define the Kubernetes agent.
-// We'll use a more general-purpose Alpine image and install necessary tools.
 pipeline {
     agent {
         kubernetes {
-            // Using alpine/git as a base, which includes git.
-            // We will explicitly install kubectl and helm in the 'Install Tools' stage.
             yaml """
 apiVersion: v1
 kind: Pod
 spec:
   containers:
   - name: devops
-    image: alpine/git:latest # Using an Alpine image that includes git
+    image: alpine/git:latest
     command: ['sleep']
     args: ['99d']
     tty: true
@@ -33,13 +29,10 @@ spec:
     environment {
         AWS_REGION = 'ap-south-1'
         CLUSTER_NAME = 'hh-stg-eks'
-        // Define paths to your Helm charts relative to the repository root
         NGINX_CHART_PATH = './nginx'
         PROMETHEUS_CHART_PATH = './prometheus'
-        K8S_NAMESPACE = 'test' // Namespace for deployment
-        // Define the path to the virtual environment for AWS CLI
+        K8S_NAMESPACE = 'test'
         AWS_VENV_PATH = '/tmp/venv_awscli'
-        // Set KUBECONFIG globally for the pipeline to ensure consistent access
         KUBECONFIG = '/root/.kube/config'
     }
 
@@ -47,7 +40,6 @@ spec:
         stage('Clone Repo') {
             steps {
                 script {
-                    // The 'alpine/git' image already contains git, so this should work.
                     git 'https://github.com/Awez123/testing-jenkins.git'
                 }
             }
@@ -56,8 +48,6 @@ spec:
         stage('Install Tools') {
             steps {
                 script {
-                    // Install kubectl and Helm within the 'devops' container.
-                    // Using apk for Alpine Linux.
                     sh '''
                         echo "🎯 Installing kubectl..."
                         apk add --no-cache curl
@@ -65,16 +55,14 @@ spec:
                         chmod +x kubectl
                         mv kubectl /usr/local/bin/
 
-                        echo "🎯 Installing bash for Helm script compatibility..."
-                        apk add --no-cache bash # Install bash explicitly
+                        echo "🎯 Installing bash..."
+                        apk add --no-cache bash
 
                         echo "🎯 Installing Helm..."
                         export VERIFY_CHECKSUM=false
-                        # Explicitly use 'bash' to run the Helm installation script to avoid 'unknown operand' errors.
                         curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
-                        echo "Verifying installations..."
-                        # Removed --short flag as it's not supported by older kubectl versions
+                        echo "✅ Verifying tools..."
                         kubectl version --client
                         helm version
                     '''
@@ -84,27 +72,16 @@ spec:
 
         stage('Configure kubeconfig') {
             steps {
-                // Ensure the 'jenkinsuser' credentials ID exists in Jenkins and holds your AWS Access Key/Secret Key.
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'jenkinsuser']]) {
                     sh '''
                         echo "🔧 Setting up AWS CLI and kubeconfig..."
-                        # Install Python and pip for virtual environment
                         apk add --no-cache python3 py3-pip
-
-                        # Create and activate a virtual environment for AWS CLI
                         python3 -m venv ${AWS_VENV_PATH}
                         . ${AWS_VENV_PATH}/bin/activate
-
-                        # Install AWS CLI into the virtual environment
                         pip install awscli
-
-                        # Configure AWS CLI and kubeconfig
-                        # KUBECONFIG is already set globally, so aws eks update-kubeconfig will write to it.
                         aws eks --region ${AWS_REGION} update-kubeconfig --name ${CLUSTER_NAME}
                         kubectl config current-context
-                        kubectl get nodes # Test connectivity
-
-                        # Deactivate the virtual environment (optional, but good practice after setup)
+                        kubectl get nodes
                         deactivate
                     '''
                 }
@@ -116,21 +93,15 @@ spec:
                 script {
                     sh '''
                         echo "🚀 Deploying NGINX..."
-                        # Activate the virtual environment for AWS CLI to ensure 'aws' is in PATH
                         . ${AWS_VENV_PATH}/bin/activate
-
-                        # KUBECONFIG is already set globally, no need to export again.
-
-                        # Check if the chart directory exists before deploying
+                        kubectl create namespace ${K8S_NAMESPACE} || echo "Namespace ${K8S_NAMESPACE} already exists"
                         if [ -d "${NGINX_CHART_PATH}" ]; then
-                            helm upgrade --install my-nginx ${NGINX_CHART_PATH} --namespace ${K8S_NAMESPACE} --create-namespace --wait
+                            helm upgrade --install my-nginx ${NGINX_CHART_PATH} --namespace ${K8S_NAMESPACE} --wait
                             echo "NGINX deployment successful."
                         else
-                            echo "NGINX Helm chart directory not found: ${NGINX_CHART_PATH}"
-                            exit 1 # Fail the stage if directory not found
+                            echo "NGINX chart not found at ${NGINX_CHART_PATH}"
+                            exit 1
                         fi
-
-                        # Deactivate the virtual environment (optional, but good practice)
                         deactivate
                     '''
                 }
@@ -142,21 +113,15 @@ spec:
                 script {
                     sh '''
                         echo "📊 Deploying Prometheus..."
-                        # Activate the virtual environment for AWS CLI to ensure 'aws' is in PATH
                         . ${AWS_VENV_PATH}/bin/activate
-
-                        # KUBECONFIG is already set globally, no need to export again.
-
-                        # Check if the chart directory exists before deploying
+                        kubectl create namespace ${K8S_NAMESPACE} || echo "Namespace ${K8S_NAMESPACE} already exists"
                         if [ -d "${PROMETHEUS_CHART_PATH}" ]; then
-                            helm upgrade --install my-prometheus ${PROMETHEUS_CHART_PATH} --namespace ${K8S_NAMESPACE} --create-namespace --wait
+                            helm upgrade --install my-prometheus ${PROMETHEUS_CHART_PATH} --namespace ${K8S_NAMESPACE} --wait
                             echo "Prometheus deployment successful."
                         else
-                            echo "Prometheus Helm chart directory not found: ${PROMETHEUS_CHART_PATH}"
-                            exit 1 # Fail the stage if directory not found
+                            echo "Prometheus chart not found at ${PROMETHEUS_CHART_PATH}"
+                            exit 1
                         fi
-
-                        # Deactivate the virtual environment (optional, but good practice)
                         deactivate
                     '''
                 }
@@ -167,11 +132,7 @@ spec:
     post {
         always {
             script {
-                if (currentBuild.result == 'SUCCESS') {
-                    echo "Pipeline finished successfully!"
-                } else {
-                    echo "Pipeline failed. Check logs for details."
-                }
+                echo currentBuild.result == 'SUCCESS' ? "✅ Pipeline completed successfully!" : "❌ Pipeline failed. Check logs."
             }
         }
     }
