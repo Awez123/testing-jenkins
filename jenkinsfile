@@ -1,42 +1,137 @@
+// Jenkinsfile for deploying Helm charts to EKS
+
+// Define the Kubernetes agent.
+// We'll use a more general-purpose Alpine image and install necessary tools.
 pipeline {
-  agent {
-    docker {
-      image 'lachlanevenson/k8s-helm:latest'
-    }
-  }
-
-  environment {
-    AWS_REGION = 'ap-south-1'
-    CLUSTER_NAME = 'hh-stg-eks'
-  }
-
-  stages {
-    stage('Clone Repo') {
-      steps {
-        git 'https://github.com/Awez123/testing-jenkins.git'
-      }
-    }
-
-    stage('Configure AWS & EKS') {
-      steps {
-        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'jenkinsuser']]) {
-          sh '''
-            aws eks --region $AWS_REGION update-kubeconfig --name $CLUSTER_NAME
-          '''
+    agent {
+        kubernetes {
+            // Using alpine/git as a base, which includes git.
+            // We will explicitly install kubectl and helm in the 'Install Tools' stage.
+            yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: devops
+    image: alpine/git:latest # Using an Alpine image that includes git
+    command: ['sleep']
+    args: ['99d']
+    tty: true
+    resources:
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+      requests:
+        memory: "256Mi"
+        cpu: "200m"
+  restartPolicy: Never
+"""
+            defaultContainer 'devops'
         }
-      }
     }
 
-    stage('Deploy NGINX') {
-      steps {
-        sh 'helm upgrade --install my-nginx ./nginx --namespace test --create-namespace'
-      }
+    environment {
+        AWS_REGION = 'ap-south-1'
+        CLUSTER_NAME = 'hh-stg-eks'
+        // Define paths to your Helm charts relative to the repository root
+        NGINX_CHART_PATH = './nginx'
+        PROMETHEUS_CHART_PATH = './prometheus'
+        K8S_NAMESPACE = 'test' // Namespace for deployment
     }
 
-    stage('Deploy Prometheus') {
-      steps {
-        sh 'helm upgrade --install my-prometheus ./prometheus --namespace test --create-namespace'
-      }
+    stages {
+        stage('Clone Repo') {
+            steps {
+                script {
+                    // The 'alpine/git' image already contains git, so this should work.
+                    git 'https://github.com/Awez123/testing-jenkins.git'
+                }
+            }
+        }
+
+        stage('Install Tools') {
+            steps {
+                script {
+                    // Install kubectl and Helm within the 'devops' container.
+                    // Using apk for Alpine Linux.
+                    sh '''
+                        echo "🎯 Installing kubectl..."
+                        apk add --no-cache curl
+                        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+                        chmod +x kubectl
+                        mv kubectl /usr/local/bin/
+
+                        echo "🎯 Installing Helm..."
+                        export VERIFY_CHECKSUM=false
+                        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+                        echo "Verifying installations..."
+                        kubectl version --client --short
+                        helm version
+                    '''
+                }
+            }
+        }
+
+        stage('Configure kubeconfig') {
+            steps {
+                // Ensure the 'jenkinsuser' credentials ID exists in Jenkins and holds your AWS Access Key/Secret Key.
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'jenkinsuser']]) {
+                    sh '''
+                        echo "🔧 Setting up AWS CLI and kubeconfig..."
+                        # AWS CLI is typically pre-installed in amazon/aws-cli, but if using other base image,
+                        # ensure it's installed. Alpine doesn't have it by default, so we'll add it here.
+                        apk add --no-cache python3 py3-pip
+                        pip install awscli
+
+                        aws eks --region $AWS_REGION update-kubeconfig --name $CLUSTER_NAME
+                        kubectl config current-context
+                        kubectl get nodes # Test connectivity
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy NGINX') {
+            steps {
+                script {
+                    echo "🚀 Deploying NGINX..."
+                    // Check if the chart directory exists before deploying
+                    if (fileExists(env.NGINX_CHART_PATH)) {
+                        sh "helm upgrade --install my-nginx ${env.NGINX_CHART_PATH} --namespace ${env.K8S_NAMESPACE} --create-namespace --wait"
+                        echo "NGINX deployment successful."
+                    } else {
+                        error "NGINX Helm chart directory not found: ${env.NGINX_CHART_PATH}"
+                    }
+                }
+            }
+        }
+
+        stage('Deploy Prometheus') {
+            steps {
+                script {
+                    echo "📊 Deploying Prometheus..."
+                    // Check if the chart directory exists before deploying
+                    if (fileExists(env.PROMETHEUS_CHART_PATH)) {
+                        sh "helm upgrade --install my-prometheus ${env.PROMETHEUS_CHART_PATH} --namespace ${env.K8S_NAMESPACE} --create-namespace --wait"
+                        echo "Prometheus deployment successful."
+                    } else {
+                        error "Prometheus Helm chart directory not found: ${env.PROMETHEUS_CHART_PATH}"
+                    }
+                }
+            }
+        }
     }
-  }
+
+    post {
+        always {
+            script {
+                if (currentBuild.result == 'SUCCESS') {
+                    echo "Pipeline finished successfully!"
+                } else {
+                    echo "Pipeline failed. Check logs for details."
+                }
+            }
+        }
+    }
 }
