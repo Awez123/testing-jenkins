@@ -84,10 +84,8 @@ spec:
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'jenkinsuser']]) {
                     sh '''
                         echo "🔧 Setting up AWS CLI and kubeconfig..."
-                        # AWS CLI is typically pre-installed in amazon/aws-cli, but if using other base image,
-                        # ensure it's installed. Alpine doesn't have it by default, so we'll add it here.
-                        apk add --no-cache python3 py3-pip
-                        pip install awscli
+                        # Install AWS CLI using Alpine's package manager
+                        apk add --no-cache py3-awscli
 
                         aws eks --region $AWS_REGION update-kubeconfig --name $CLUSTER_NAME
                         kubectl config current-context
