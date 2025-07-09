@@ -84,12 +84,23 @@ spec:
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'jenkinsuser']]) {
                     sh '''
                         echo "🔧 Setting up AWS CLI and kubeconfig..."
-                        # Install AWS CLI using Alpine's package manager
-                        apk add --no-cache py3-awscli
+                        # Install Python and pip for virtual environment
+                        apk add --no-cache python3 py3-pip
 
+                        # Create and activate a virtual environment for AWS CLI
+                        python3 -m venv /tmp/venv_awscli
+                        . /tmp/venv_awscli/bin/activate
+
+                        # Install AWS CLI into the virtual environment
+                        pip install awscli
+
+                        # Configure AWS CLI and kubeconfig
                         aws eks --region $AWS_REGION update-kubeconfig --name $CLUSTER_NAME
                         kubectl config current-context
                         kubectl get nodes # Test connectivity
+
+                        # Deactivate the virtual environment (optional, but good practice)
+                        deactivate
                     '''
                 }
             }
