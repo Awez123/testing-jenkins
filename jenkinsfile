@@ -96,16 +96,15 @@ spec:
                         # Install AWS CLI into the virtual environment
                         pip install awscli
 
-                        # Ensure the virtual environment's bin directory is added to PATH for subsequent stages
-                        # This creates a temporary script that will be sourced later.
-                        echo "export PATH=${AWS_VENV_PATH}/bin:\$PATH" > /tmp/set_aws_path.sh
+                        # Export KUBECONFIG to ensure kubectl and helm use the generated config
+                        export KUBECONFIG=/root/.kube/config
 
                         # Configure AWS CLI and kubeconfig
                         aws eks --region ${AWS_REGION} update-kubeconfig --name ${CLUSTER_NAME}
                         kubectl config current-context
                         kubectl get nodes # Test connectivity
 
-                        # Deactivate the virtual environment (optional, as PATH is now set via script)
+                        # Deactivate the virtual environment
                         deactivate
                     '''
                 }
@@ -115,10 +114,14 @@ spec:
         stage('Deploy NGINX') {
             steps {
                 script {
-                    // Source the script to ensure AWS CLI is in PATH for this stage
                     sh '''
-                        . /tmp/set_aws_path.sh
                         echo "🚀 Deploying NGINX..."
+                        # Activate the virtual environment for AWS CLI to ensure 'aws' is in PATH
+                        . ${AWS_VENV_PATH}/bin/activate
+
+                        # Ensure KUBECONFIG is set for this shell session
+                        export KUBECONFIG=/root/.kube/config
+
                         # Check if the chart directory exists before deploying
                         if [ -d "${NGINX_CHART_PATH}" ]; then
                             helm upgrade --install my-nginx ${NGINX_CHART_PATH} --namespace ${K8S_NAMESPACE} --create-namespace --wait
@@ -127,6 +130,9 @@ spec:
                             echo "NGINX Helm chart directory not found: ${NGINX_CHART_PATH}"
                             exit 1 # Fail the stage if directory not found
                         fi
+
+                        # Deactivate the virtual environment (optional, but good practice)
+                        deactivate
                     '''
                 }
             }
@@ -135,10 +141,14 @@ spec:
         stage('Deploy Prometheus') {
             steps {
                 script {
-                    // Source the script to ensure AWS CLI is in PATH for this stage
                     sh '''
-                        . /tmp/set_aws_path.sh
                         echo "📊 Deploying Prometheus..."
+                        # Activate the virtual environment for AWS CLI to ensure 'aws' is in PATH
+                        . ${AWS_VENV_PATH}/bin/activate
+
+                        # Ensure KUBECONFIG is set for this shell session
+                        export KUBECONFIG=/root/.kube/config
+
                         # Check if the chart directory exists before deploying
                         if [ -d "${PROMETHEUS_CHART_PATH}" ]; then
                             helm upgrade --install my-prometheus ${PROMETHEUS_CHART_PATH} --namespace ${K8S_NAMESPACE} --create-namespace --wait
@@ -147,6 +157,9 @@ spec:
                             echo "Prometheus Helm chart directory not found: ${PROMETHEUS_CHART_PATH}"
                             exit 1 # Fail the stage if directory not found
                         fi
+
+                        # Deactivate the virtual environment (optional, but good practice)
+                        deactivate
                     '''
                 }
             }
