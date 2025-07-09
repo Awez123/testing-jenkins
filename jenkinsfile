@@ -37,6 +37,8 @@ spec:
         NGINX_CHART_PATH = './nginx'
         PROMETHEUS_CHART_PATH = './prometheus'
         K8S_NAMESPACE = 'test' // Namespace for deployment
+        // Define the path to the virtual environment for AWS CLI
+        AWS_VENV_PATH = '/tmp/venv_awscli'
     }
 
     stages {
@@ -88,18 +90,22 @@ spec:
                         apk add --no-cache python3 py3-pip
 
                         # Create and activate a virtual environment for AWS CLI
-                        python3 -m venv /tmp/venv_awscli
-                        . /tmp/venv_awscli/bin/activate
+                        python3 -m venv ${AWS_VENV_PATH}
+                        . ${AWS_VENV_PATH}/bin/activate
 
                         # Install AWS CLI into the virtual environment
                         pip install awscli
 
+                        # Ensure the virtual environment's bin directory is added to PATH for subsequent stages
+                        # This creates a temporary script that will be sourced later.
+                        echo "export PATH=${AWS_VENV_PATH}/bin:\$PATH" > /tmp/set_aws_path.sh
+
                         # Configure AWS CLI and kubeconfig
-                        aws eks --region $AWS_REGION update-kubeconfig --name $CLUSTER_NAME
+                        aws eks --region ${AWS_REGION} update-kubeconfig --name ${CLUSTER_NAME}
                         kubectl config current-context
                         kubectl get nodes # Test connectivity
 
-                        # Deactivate the virtual environment (optional, but good practice)
+                        # Deactivate the virtual environment (optional, as PATH is now set via script)
                         deactivate
                     '''
                 }
@@ -109,14 +115,19 @@ spec:
         stage('Deploy NGINX') {
             steps {
                 script {
-                    echo "🚀 Deploying NGINX..."
-                    // Check if the chart directory exists before deploying
-                    if (fileExists(env.NGINX_CHART_PATH)) {
-                        sh "helm upgrade --install my-nginx ${env.NGINX_CHART_PATH} --namespace ${env.K8S_NAMESPACE} --create-namespace --wait"
-                        echo "NGINX deployment successful."
-                    } else {
-                        error "NGINX Helm chart directory not found: ${env.NGINX_CHART_PATH}"
-                    }
+                    // Source the script to ensure AWS CLI is in PATH for this stage
+                    sh '''
+                        . /tmp/set_aws_path.sh
+                        echo "🚀 Deploying NGINX..."
+                        # Check if the chart directory exists before deploying
+                        if [ -d "${NGINX_CHART_PATH}" ]; then
+                            helm upgrade --install my-nginx ${NGINX_CHART_PATH} --namespace ${K8S_NAMESPACE} --create-namespace --wait
+                            echo "NGINX deployment successful."
+                        else
+                            echo "NGINX Helm chart directory not found: ${NGINX_CHART_PATH}"
+                            exit 1 # Fail the stage if directory not found
+                        fi
+                    '''
                 }
             }
         }
@@ -124,14 +135,19 @@ spec:
         stage('Deploy Prometheus') {
             steps {
                 script {
-                    echo "📊 Deploying Prometheus..."
-                    // Check if the chart directory exists before deploying
-                    if (fileExists(env.PROMETHEUS_CHART_PATH)) {
-                        sh "helm upgrade --install my-prometheus ${env.PROMETHEUS_CHART_PATH} --namespace ${env.K8S_NAMESPACE} --create-namespace --wait"
-                        echo "Prometheus deployment successful."
-                    } else {
-                        error "Prometheus Helm chart directory not found: ${env.PROMETHEUS_CHART_PATH}"
-                    }
+                    // Source the script to ensure AWS CLI is in PATH for this stage
+                    sh '''
+                        . /tmp/set_aws_path.sh
+                        echo "📊 Deploying Prometheus..."
+                        # Check if the chart directory exists before deploying
+                        if [ -d "${PROMETHEUS_CHART_PATH}" ]; then
+                            helm upgrade --install my-prometheus ${PROMETHEUS_CHART_PATH} --namespace ${K8S_NAMESPACE} --create-namespace --wait
+                            echo "Prometheus deployment successful."
+                        else
+                            echo "Prometheus Helm chart directory not found: ${PROMETHEUS_CHART_PATH}"
+                            exit 1 # Fail the stage if directory not found
+                        fi
+                    '''
                 }
             }
         }
