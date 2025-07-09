@@ -16,9 +16,11 @@ pipeline {
     stage('Configure AWS & EKS') {
       steps {
         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'jenkinuser']]) {
-          sh '''
-            aws eks --region $AWS_REGION update-kubeconfig --name $CLUSTER_NAME
-          '''
+            sh '''
+                which aws || echo "aws CLI not found"
+                aws --version || echo "aws CLI missing or broken"
+                aws eks --region $AWS_REGION update-kubeconfig --name $CLUSTER_NAME
+            '''
         }
       }
     }
