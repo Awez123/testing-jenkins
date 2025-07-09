@@ -33,7 +33,7 @@ spec:
       steps {
         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'jenkinsuser']]) {
           sh '''
-            apt update && apt install -y curl tar unzip less groff
+            echo "📦 Installing AWS CLI..."
             curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.tar.gz" -o "awscliv2.tar.gz"
             tar -xvzf awscliv2.tar.gz
             ./aws/install
@@ -43,21 +43,30 @@ spec:
       }
     }
 
-    stage('Configure Kubeconfig') {
+    stage('Configure kubeconfig') {
       steps {
-        sh 'aws eks --region $AWS_REGION update-kubeconfig --name $CLUSTER_NAME'
+        sh '''
+          echo "🔧 Configuring kubeconfig..."
+          aws eks --region $AWS_REGION update-kubeconfig --name $CLUSTER_NAME
+        '''
       }
     }
 
     stage('Deploy NGINX') {
       steps {
-        sh 'helm upgrade --install my-nginx ./nginx --namespace test --create-namespace'
+        sh '''
+          echo "🚀 Deploying NGINX..."
+          helm upgrade --install my-nginx ./nginx --namespace test --create-namespace
+        '''
       }
     }
 
     stage('Deploy Prometheus') {
       steps {
-        sh 'helm upgrade --install my-prometheus ./prometheus --namespace test --create-namespace'
+        sh '''
+          echo "📊 Deploying Prometheus..."
+          helm upgrade --install my-prometheus ./prometheus --namespace test --create-namespace
+        '''
       }
     }
   }
