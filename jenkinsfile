@@ -1,0 +1,42 @@
+pipeline {
+  agent any
+
+  environment {
+    AWS_REGION = 'ap-south-1'
+    CLUSTER_NAME = 'hh-stg-eks' 
+  }
+
+  stages {
+    stage('Clone Repo') {
+      steps {
+        git 'https://github.com/your-username/your-helm-charts-repo.git' 
+      }
+    }
+
+    stage('Configure AWS & EKS') {
+      steps {
+        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'jenkinuser']]) {
+          sh '''
+            aws eks --region $AWS_REGION update-kubeconfig --name $CLUSTER_NAME
+          '''
+        }
+      }
+    }
+
+    stage('Deploy NGINX') {
+      steps {
+        sh '''
+          helm upgrade --install my-nginx ./nginx --namespace test --create-namespace
+        '''
+      }
+    }
+
+    stage('Deploy Prometheus') {
+      steps {
+        sh '''
+          helm upgrade --install my-prometheus ./prometheus --namespace test --create-namespace
+        '''
+      }
+    }
+  }
+}
