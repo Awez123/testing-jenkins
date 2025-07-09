@@ -10,7 +10,11 @@ pipeline {
     stage('Install Tools') {
       steps {
         sh '''
-          # Install aws CLI if missing
+          # Update and install basic dependencies
+          sudo apt-get update
+          sudo apt-get install -y unzip curl sudo tar gzip
+
+          # Install AWS CLI
           if ! command -v aws &> /dev/null; then
             curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
             unzip awscliv2.zip
@@ -23,6 +27,11 @@ pipeline {
 
           # Install Helm
           curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+          # Confirm versions
+          aws --version
+          kubectl version --client
+          helm version
         '''
       }
     }
@@ -31,7 +40,6 @@ pipeline {
       steps {
         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'jenkinsuser']]) {
           sh '''
-            aws --version
             aws eks --region $AWS_REGION update-kubeconfig --name $CLUSTER_NAME
           '''
         }
@@ -46,13 +54,17 @@ pipeline {
 
     stage('Deploy NGINX') {
       steps {
-        sh 'helm upgrade --install my-nginx ./nginx --namespace test --create-namespace'
+        sh '''
+          helm upgrade --install my-nginx ./nginx --namespace test --create-namespace
+        '''
       }
     }
 
     stage('Deploy Prometheus') {
       steps {
-        sh 'helm upgrade --install my-prometheus ./prometheus --namespace test --create-namespace'
+        sh '''
+          helm upgrade --install my-prometheus ./prometheus --namespace test --create-namespace
+        '''
       }
     }
   }
