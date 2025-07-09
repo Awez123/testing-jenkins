@@ -1,0 +1,62 @@
+pipeline {
+  agent {
+    docker {
+      image 'amazon/aws-cli' // Lightweight base with AWS CLI
+      args '-u root'         // Run as root to install packages
+    }
+  }
+
+  environment {
+    AWS_REGION = 'ap-south-1'
+    CLUSTER_NAME = 'hh-stg-eks'
+  }
+
+  stages {
+    stage('Install Dependencies') {
+      steps {
+        sh '''
+          yum install -y curl unzip tar gzip
+          curl -LO "https://dl.k8s.io/release/$(curl -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl && mv kubectl /usr/local/bin/
+
+          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+          helm version
+          kubectl version --client
+        '''
+      }
+    }
+
+    stage('Configure AWS & EKS') {
+      steps {
+        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'jenkinsuser']]) {
+          sh '''
+            aws --version
+            aws eks --region $AWS_REGION update-kubeconfig --name $CLUSTER_NAME
+          '''
+        }
+      }
+    }
+
+    stage('Clone Repo') {
+      steps {
+        git 'https://github.com/Awez123/testing-jenkins.git'
+      }
+    }
+
+    stage('Deploy NGINX') {
+      steps {
+        sh '''
+          helm upgrade --install my-nginx ./nginx --namespace test --create-namespace
+        '''
+      }
+    }
+
+    stage('Deploy Prometheus') {
+      steps {
+        sh '''
+          helm upgrade --install my-prometheus ./prometheus --namespace test --create-namespace
+        '''
+      }
+    }
+  }
+}
