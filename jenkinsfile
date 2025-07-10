@@ -33,7 +33,7 @@ spec:
         NGINX_CHART_PATH = './nginx'
         NGINX_NAMESPACE = 'nginx'
         KUBECONFIG_PATH = '/workspace/kubeconfig'
-        # Define a temporary AWS_PROFILE for the jenkinsuser credentials
+        // Define a temporary AWS_PROFILE for the jenkinsuser credentials
         AWS_PROFILE_NAME = 'jenkins-pipeline-profile'
     }
 
