@@ -72,10 +72,7 @@ spec:
                 sh '''
                     echo "🚀 Deploying NGINX chart..."
                     export KUBECONFIG=${KUBECONFIG_PATH}
-                    helm upgrade --install my-nginx ${NGINX_CHART_PATH} \
-                        --namespace ${NGINX_NAMESPACE} \
-                        --create-namespace \
-                        --wait
+                    helm upgrade --install my-nginx ./nginx --namespace nginx --create-namespace --wait --kube-context arn:aws:eks:ap-south-1:650576187890:cluster/hh-stg-eks
 
                     echo "✅ NGINX deployed successfully!"
                     kubectl get all -n ${NGINX_NAMESPACE}

@@ -1,0 +1,22 @@
+apiVersion: v1
+data:
+  mapAccounts: |
+    - "650576187890"
+  mapRoles: |
+    - "groups":
+      - "system:bootstrappers"
+      - "system:nodes"
+      "rolearn": "arn:aws:iam::650576187890:role/hh-stg-eks-ng01-eks-node-group-2025071013303977660000000d"
+      "username": "system:node:{{EC2PrivateDNSName}}"
+  mapUsers: |
+    - userarn: arn:aws:iam::650576187890:user/jenkins-eks-cluster-deployment-user
+      username: jenkins-eks-deployment-user
+      groups:
+        - system:masters
+kind: ConfigMap
+metadata:
+  creationTimestamp: "2025-07-10T13:43:25Z"
+  name: aws-auth
+  namespace: kube-system
+  resourceVersion: "1956"
+  uid: 17f38bf0-c1f6-4c34-b010-5f0471c4cc95
