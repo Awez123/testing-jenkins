@@ -32,6 +32,7 @@ spec:
         CLUSTER_NAME = 'hh-stg-eks'
         NGINX_CHART_PATH = './nginx'
         NGINX_NAMESPACE = 'nginx'
+        KUBECONFIG = '/root/.kube/config'
     }
 
     stages {
@@ -51,11 +52,13 @@ spec:
                         echo "📋 Listing EKS clusters..."
                         aws eks list-clusters --region ${AWS_REGION}
 
-                        echo "🔧 Updating kubeconfig for ${CLUSTER_NAME}"
+                        echo "🔧 Updating kubeconfig for ${CLUSTER_NAME}..."
                         aws eks update-kubeconfig --region ${AWS_REGION} --name ${CLUSTER_NAME}
 
-                        echo "✅ Current kubectl context:"
+                        echo "✅ Verifying kubectl access..."
+                        export KUBECONFIG=${KUBECONFIG}
                         kubectl config current-context
+                        kubectl get nodes
                     '''
                 }
             }
@@ -65,6 +68,7 @@ spec:
             steps {
                 sh '''
                     echo "🚀 Deploying NGINX chart..."
+                    export KUBECONFIG=${KUBECONFIG}
                     helm upgrade --install my-nginx ${NGINX_CHART_PATH} \
                         --namespace ${NGINX_NAMESPACE} \
                         --create-namespace \
