@@ -32,7 +32,7 @@ spec:
         CLUSTER_NAME = 'hh-stg-eks'
         NGINX_CHART_PATH = './nginx'
         NGINX_NAMESPACE = 'nginx'
-        KUBECONFIG = '/root/.kube/config'
+        KUBECONFIG_PATH = '/workspace/kubeconfig'
     }
 
     stages {
@@ -42,7 +42,7 @@ spec:
             }
         }
 
-        stage('AWS Auth & Kubeconfig') {
+        stage('Configure AWS & kubeconfig') {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'jenkinsuser']]) {
                     sh '''
@@ -53,12 +53,15 @@ spec:
                         aws eks list-clusters --region ${AWS_REGION}
 
                         echo "🔧 Updating kubeconfig for ${CLUSTER_NAME}..."
-                        aws eks update-kubeconfig --region ${AWS_REGION} --name ${CLUSTER_NAME}
+                        aws eks update-kubeconfig --region ${AWS_REGION} \
+                            --name ${CLUSTER_NAME} \
+                            --kubeconfig ${KUBECONFIG_PATH}
 
-                        echo "✅ Verifying kubectl access..."
-                        export KUBECONFIG=${KUBECONFIG}
+                        echo "✅ Testing Kubeconfig..."
+                        export KUBECONFIG=${KUBECONFIG_PATH}
                         kubectl config current-context
                         kubectl get nodes
+                        kubectl auth can-i list secrets --namespace ${NGINX_NAMESPACE}
                     '''
                 }
             }
@@ -68,7 +71,7 @@ spec:
             steps {
                 sh '''
                     echo "🚀 Deploying NGINX chart..."
-                    export KUBECONFIG=${KUBECONFIG}
+                    export KUBECONFIG=${KUBECONFIG_PATH}
                     helm upgrade --install my-nginx ${NGINX_CHART_PATH} \
                         --namespace ${NGINX_NAMESPACE} \
                         --create-namespace \
