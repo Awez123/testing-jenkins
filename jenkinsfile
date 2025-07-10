@@ -12,8 +12,6 @@ spec:
   containers:
   - name: aws-tools
     image: jerinpaul/awscli-helm-kubectl:latest
-    command: ['cat']
-    tty: true
     resources:
       limits:
         memory: "1Gi"
