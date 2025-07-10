@@ -1,129 +1,56 @@
-// Jenkinsfile for deploying Helm charts to EKS
-
 pipeline {
     agent {
         kubernetes {
             yaml """
 apiVersion: v1
 kind: Pod
+metadata:
+  labels:
+    purpose: eks-auth-check
 spec:
   serviceAccountName: jenkins
   containers:
-  - name: devops
-    image: alpine/git:latest
-    command: ['sleep']
-    args: ['99d']
+  - name: aws-tools
+    image: jerinpaul/awscli-helm-kubectl:latest
+    command: ['cat']
     tty: true
     resources:
       limits:
+        memory: "1Gi"
+        cpu: "1000m"
+      requests:
         memory: "512Mi"
         cpu: "500m"
-      requests:
-        memory: "256Mi"
-        cpu: "200m"
   restartPolicy: Never
 """
-            defaultContainer 'devops'
+            defaultContainer 'aws-tools'
         }
     }
 
     environment {
         AWS_REGION = 'ap-south-1'
         CLUSTER_NAME = 'hh-stg-eks'
-        NGINX_CHART_PATH = './nginx'
-        PROMETHEUS_CHART_PATH = './prometheus'
-        K8S_NAMESPACE = 'test'
-        AWS_VENV_PATH = '/tmp/venv_awscli'
-        KUBECONFIG = '/root/.kube/config'
     }
 
     stages {
-        stage('Clone Repo') {
-            steps {
-                script {
-                    git 'https://github.com/Awez123/testing-jenkins.git'
-                }
-            }
-        }
-
-        stage('Install Tools') {
-            steps {
-                script {
-                    sh '''
-                        echo "🎯 Installing kubectl..."
-                        apk add --no-cache curl
-                        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-                        chmod +x kubectl
-                        mv kubectl /usr/local/bin/
-
-                        echo "🎯 Installing bash..."
-                        apk add --no-cache bash
-
-                        echo "🎯 Installing Helm..."
-                        export VERIFY_CHECKSUM=false
-                        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-
-                        echo "✅ Verifying tools..."
-                        kubectl version --client
-                        helm version
-                    '''
-                }
-            }
-        }
-
-        stage('Configure kubeconfig') {
+        stage('Check AWS Access & Kubeconfig') {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'jenkinsuser']]) {
                     sh '''
-                        echo "🔧 Setting up AWS CLI and kubeconfig..."
-                        apk add --no-cache python3 py3-pip
-                        python3 -m venv ${AWS_VENV_PATH}
-                        . ${AWS_VENV_PATH}/bin/activate
-                        pip install awscli
-                        aws eks --region ${AWS_REGION} update-kubeconfig --name ${CLUSTER_NAME}
+                        echo "🔐 Authenticating with AWS..."
+                        aws sts get-caller-identity
+
+                        echo "📋 Listing EKS clusters..."
+                        aws eks list-clusters --region ${AWS_REGION}
+
+                        echo "🔧 Setting kubeconfig for EKS cluster: ${CLUSTER_NAME}"
+                        aws eks update-kubeconfig --region ${AWS_REGION} --name ${CLUSTER_NAME}
+
+                        echo "✅ Current kubectl context:"
                         kubectl config current-context
+
+                        echo "📡 Getting cluster nodes:"
                         kubectl get nodes
-                        deactivate
-                    '''
-                }
-            }
-        }
-
-        stage('Deploy NGINX') {
-            steps {
-                script {
-                    sh '''
-                        echo "🚀 Deploying NGINX..."
-                        . ${AWS_VENV_PATH}/bin/activate
-                        kubectl create namespace ${K8S_NAMESPACE} || echo "Namespace ${K8S_NAMESPACE} already exists"
-                        if [ -d "${NGINX_CHART_PATH}" ]; then
-                            helm upgrade --install my-nginx ${NGINX_CHART_PATH} --namespace ${K8S_NAMESPACE} --wait
-                            echo "NGINX deployment successful."
-                        else
-                            echo "NGINX chart not found at ${NGINX_CHART_PATH}"
-                            exit 1
-                        fi
-                        deactivate
-                    '''
-                }
-            }
-        }
-
-        stage('Deploy Prometheus') {
-            steps {
-                script {
-                    sh '''
-                        echo "📊 Deploying Prometheus..."
-                        . ${AWS_VENV_PATH}/bin/activate
-                        kubectl create namespace ${K8S_NAMESPACE} || echo "Namespace ${K8S_NAMESPACE} already exists"
-                        if [ -d "${PROMETHEUS_CHART_PATH}" ]; then
-                            helm upgrade --install my-prometheus ${PROMETHEUS_CHART_PATH} --namespace ${K8S_NAMESPACE} --wait
-                            echo "Prometheus deployment successful."
-                        else
-                            echo "Prometheus chart not found at ${PROMETHEUS_CHART_PATH}"
-                            exit 1
-                        fi
-                        deactivate
                     '''
                 }
             }
@@ -132,9 +59,7 @@ spec:
 
     post {
         always {
-            script {
-                echo currentBuild.result == 'SUCCESS' ? "✅ Pipeline completed successfully!" : "❌ Pipeline failed. Check logs."
-            }
+            echo currentBuild.result == 'SUCCESS' ? "✅ Pipeline completed successfully!" : "❌ Pipeline failed. Check logs."
         }
     }
 }
