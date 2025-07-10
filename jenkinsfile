@@ -12,8 +12,7 @@ spec:
   containers:
   - name: aws-tools
     image: jerinpaul/awscli-helm-kubectl:latest
-    command: ['/bin/sh', '-cx']
-    args: ['true'] # Use a simple, always-true command for the args
+    command: ['cat']
     tty: true
     resources:
       limits:
