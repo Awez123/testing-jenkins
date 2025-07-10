@@ -6,7 +6,7 @@ apiVersion: v1
 kind: Pod
 metadata:
   labels:
-    purpose: eks-auth-check
+    purpose: eks-deploy
 spec:
   serviceAccountName: jenkins
   containers:
@@ -30,10 +30,18 @@ spec:
     environment {
         AWS_REGION = 'ap-south-1'
         CLUSTER_NAME = 'hh-stg-eks'
+        NGINX_CHART_PATH = './nginx'
+        NGINX_NAMESPACE = 'nginx'
     }
 
     stages {
-        stage('Check AWS Access & Kubeconfig') {
+        stage('Clone Repo') {
+            steps {
+                git 'https://github.com/Awez123/testing-jenkins.git'
+            }
+        }
+
+        stage('AWS Auth & Kubeconfig') {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'jenkinsuser']]) {
                     sh '''
@@ -43,16 +51,28 @@ spec:
                         echo "📋 Listing EKS clusters..."
                         aws eks list-clusters --region ${AWS_REGION}
 
-                        echo "🔧 Setting kubeconfig for EKS cluster: ${CLUSTER_NAME}"
+                        echo "🔧 Updating kubeconfig for ${CLUSTER_NAME}"
                         aws eks update-kubeconfig --region ${AWS_REGION} --name ${CLUSTER_NAME}
 
                         echo "✅ Current kubectl context:"
                         kubectl config current-context
-
-                        echo "📡 Getting cluster nodes:"
-                        kubectl get nodes
                     '''
                 }
+            }
+        }
+
+        stage('Deploy NGINX Helm Chart') {
+            steps {
+                sh '''
+                    echo "🚀 Deploying NGINX chart..."
+                    helm upgrade --install my-nginx ${NGINX_CHART_PATH} \
+                        --namespace ${NGINX_NAMESPACE} \
+                        --create-namespace \
+                        --wait
+
+                    echo "✅ NGINX deployed successfully!"
+                    kubectl get all -n ${NGINX_NAMESPACE}
+                '''
             }
         }
     }
