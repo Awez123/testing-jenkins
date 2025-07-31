@@ -1,112 +1,77 @@
 pipeline {
     agent {
-        kubernetes {
-            yaml """
-apiVersion: v1
-kind: Pod
-metadata:
-  labels:
-    purpose: eks-deploy
-spec:
-  serviceAccountName: jenkins
-  containers:
-  - name: aws-tools
-    image: jerinpaul/awscli-helm-kubectl:latest
-    command: ['cat']
-    tty: true
-    resources:
-      limits:
-        memory: "1Gi"
-        cpu: "1000m"
-      requests:
-        memory: "512Mi"
-        cpu: "500m"
-  restartPolicy: Never
-"""
-            defaultContainer 'aws-tools'
-        }
+        any
     }
 
     environment {
         AWS_REGION = 'ap-south-1'
-        CLUSTER_NAME = 'hh-stg-eks'
-        NGINX_CHART_PATH = './nginx'
-        NGINX_NAMESPACE = 'nginx'
-        PROMETHEUS_CHART_PATH = './prometheus'
-        PROMETHEUS_NAMESPACE = 'prometheus'
-        KUBECONFIG_PATH = '/workspace/kubeconfig'
         AWS_PROFILE_NAME = 'jenkins-pipeline-profile'
     }
 
     stages {
-        stage('Clone Repo') {
+        stage('Tool and Credentials Verification') {
             steps {
-                git 'https://github.com/Awez123/testing-jenkins.git'
-            }
-        }
+                script {
+                    echo "--- Verifying Git ---"
+                    try {
+                        sh 'git --version'
+                        echo "✅ Git is installed and accessible."
+                    } catch (Exception e) {
+                        echo "❌ Git is not installed or not in PATH."
+                    }
 
-        stage('Configure AWS & kubeconfig') {
-            steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'jenkinsuser']]) {
-                    sh '''
-                        echo "🔐 Authenticating with AWS..."
-                        mkdir -p ~/.aws
-                        cat > ~/.aws/credentials <<EOF
+                    echo "--- Verifying Kubectl ---"
+                    try {
+                        sh 'kubectl version --client'
+                        echo "✅ Kubectl is installed and accessible."
+                    } catch (Exception e) {
+                        echo "❌ Kubectl is not installed or not in PATH."
+                    }
+                    
+                    echo "--- Verifying Helm ---"
+                    try {
+                        sh 'helm version'
+                        echo "✅ Helm is installed and accessible."
+                    } catch (Exception e) {
+                        echo "❌ Helm is not installed or not in PATH."
+                    }
+                    
+                    echo "--- Verifying AWS CLI and Credentials ---"
+                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'jenkinsuser']]) {
+                        try {
+                            sh '''
+                                # Temporarily configure AWS credentials for this step
+                                mkdir -p ~/.aws
+                                cat > ~/.aws/credentials <<EOF
 [${AWS_PROFILE_NAME}]
 aws_access_key_id = ${AWS_ACCESS_KEY_ID}
 aws_secret_access_key = ${AWS_SECRET_ACCESS_KEY}
 EOF
-                        cat > ~/.aws/config <<EOF
+                                cat > ~/.aws/config <<EOF
 [profile ${AWS_PROFILE_NAME}]
 region = ${AWS_REGION}
 EOF
-
-                        export AWS_PROFILE=${AWS_PROFILE_NAME}
-
-                        aws eks update-kubeconfig --region ${AWS_REGION} \
-                            --name ${CLUSTER_NAME} \
-                            --kubeconfig ${KUBECONFIG_PATH} \
-                            --profile ${AWS_PROFILE_NAME}
-
-                        echo "✅ Kubeconfig updated."
-                        export KUBECONFIG=${KUBECONFIG_PATH}
-                    '''
+                                export AWS_PROFILE=${AWS_PROFILE_NAME}
+                                
+                                echo "AWS CLI version:"
+                                aws --version
+                                
+                                echo "AWS Caller Identity:"
+                                aws sts get-caller-identity
+                            '''
+                            echo "✅ AWS CLI is installed and credentials are working."
+                        } catch (Exception e) {
+                            echo "❌ AWS CLI is not installed, or 'jenkinsuser' credentials are not configured correctly."
+                        }
+                    }
                 }
-            }
-        }
-
-        stage('Deploy NGINX Helm Chart') {
-            steps {
-                sh '''
-                    echo "🚀 Deploying NGINX chart..."
-                    export KUBECONFIG=${KUBECONFIG_PATH}
-                    helm upgrade --install my-nginx ${NGINX_CHART_PATH} --namespace ${NGINX_NAMESPACE} --create-namespace --wait \
-                        --kube-context arn:aws:eks:ap-south-1:650576187890:cluster/hh-stg-eks
-
-                    echo "✅ NGINX deployed successfully!"
-                    kubectl get all -n ${NGINX_NAMESPACE}
-                '''
-            }
-        }
-
-        stage('Deploy Prometheus Helm Chart') {
-            steps {
-                sh '''
-                    echo "🚀 Deploying Prometheus chart..."
-                    export KUBECONFIG=${KUBECONFIG_PATH}
-                    helm upgrade --install prometheus ${PROMETHEUS_CHART_PATH} --namespace ${PROMETHEUS_NAMESPACE} --create-namespace --wait \
-                        --kube-context arn:aws:eks:ap-south-1:650576187890:cluster/hh-stg-eks
-
-                    echo "✅ Prometheus deployed successfully!"
-                    kubectl get all -n ${PROMETHEUS_NAMESPACE}
-                '''
             }
         }
     }
 
     post {
         always {
-            echo currentBuild.result == 'SUCCESS' ? "✅ Pipeline completed successfully!" : "❌ Pipeline failed. Check logs."
+            echo "✅ Verification pipeline completed. Check the log for results."
         }
     }
 }
